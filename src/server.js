@@ -7,40 +7,37 @@ import {
   InteractionResponseFlags,
   InteractionResponseType,
   InteractionType,
-  verifyKey,
-  //  verifyKeyMiddleware
+  verifyKeyMiddleware,
 } from 'discord-interactions';
 import { REACTION_CSV_COMMAND, INVITE_COMMAND } from './commands.js';
 
-async function verifyKeyMiddleware(req, env) {
-  const signature = req.headers.get('x-signature-ed25519');
-  const timestamp = req.headers.get('x-signature-timestamp');
-  const body = await req.text();
-  const isValidRequest =
-    signature &&
-    timestamp &&
-    (await server.verifyKey(
-      body,
-      signature,
-      timestamp,
-      env.DISCORD_PUBLIC_KEY,
-    ));
+async function discordMiddleware(req, env) {
+  const expressReq = {
+    body: await req.text(),
+    header: (name) => req.headers.get(name),
+  };
 
-  if (!isValidRequest) {
-    return new Response('Bad request signature.', { status: 401 });
+  const res = { headers: {} };
+  const expressRes = {
+    setHeader: (key, val) => (res.headers[key] = val),
+    end: (val) => (res.body = val),
+  };
+
+  let isValid = false;
+  const next = () => (isValid = true);
+
+  await server.verifyKeyMiddleware(env.DISCORD_PUBLIC_KEY)(
+    expressReq,
+    expressRes,
+    next,
+  );
+
+  if (!isValid) {
+    res.status = expressRes.statusCode;
+    return new Response(res.body, res);
   }
 
-  try {
-    req.interaction = JSON.parse(body) || {};
-  } catch {
-    return new Response('Bad request json format.', { status: 401 });
-  }
-
-  if (req.interaction.type === InteractionType.PING) {
-    // The `PING` message is used during the initial webhook handshake, and is
-    // required to configure the webhook in the developer portal.
-    return { type: InteractionResponseType.PONG };
-  }
+  req.interaction = expressReq.body;
 }
 
 const router = AutoRouter();
@@ -57,7 +54,7 @@ router.get('/', (req, env) => {
  * include a JSON payload described here:
  * https://discord.com/developers/docs/interactions/receiving-and-responding#interaction-object
  */
-router.post('/', verifyKeyMiddleware, async (req, env) => {
+router.post('/', discordMiddleware, async (req, env) => {
   const interaction = req.interaction;
 
   if (interaction.type === InteractionType.APPLICATION_COMMAND) {
@@ -95,7 +92,7 @@ router.post('/', verifyKeyMiddleware, async (req, env) => {
 });
 
 const server = {
-  verifyKey,
+  verifyKeyMiddleware,
   fetch: router.fetch,
 };
 

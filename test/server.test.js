@@ -7,16 +7,70 @@ import {
 import { REACTION_CSV_COMMAND, INVITE_COMMAND } from '../src/commands.js';
 import sinon from 'sinon';
 import server from '../src/server.js';
+const { subtle } = globalThis.crypto;
+
+const TEST_PRIVATE_KEY_JWK = {
+  key_ops: ['sign'],
+  ext: true,
+  alg: 'Ed25519',
+  crv: 'Ed25519',
+  d: 'xiy1Hknjlz6u3OH1Le3XpNZ2Q0_FFii6C8S1s6o0pfk',
+  x: 'U4o-S7CINdaLu7vXEjhqnHVStx75LlIqlxvIf1nxmF4',
+  kty: 'OKP',
+};
+
+const TEST_PRIVATE_KEY = await subtle.importKey(
+  'jwk',
+  TEST_PRIVATE_KEY_JWK,
+  {
+    name: 'ed25519',
+    namedCurve: 'ed25519',
+  },
+  true,
+  ['sign'],
+);
+
+const TEST_PUBLIC_KEY_HEX =
+  '538a3e4bb08835d68bbbbbd712386a9c7552b71ef92e522a971bc87f59f1985e';
+
+function hexStringFromArrayBuffer(arrayBuff) {
+  return [...new Uint8Array(arrayBuff)]
+    .map((x) => x.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+// function arrayBufferFromHexString(str) {
+//   const matches = str.match(/.{1,2}/g);
+//   const hexVal = matches.map((byte) => Number.parseInt(byte, 16));
+//   return new Uint8Array(hexVal);
+// }
 
 function makePostRequest(bodyObj) {
   return new Request('http://discordo.example', {
-    headers: {
-      'X-Signature-Timestamp': '1',
-      'X-Signature-Ed25519': '1',
-    },
     method: 'POST',
     body: JSON.stringify(bodyObj),
   });
+}
+
+async function makeSignedPostRequest(bodyObj) {
+  const TIMESTAMP = '2025-11-06T21:41:40Z';
+  const body = JSON.stringify(bodyObj);
+  const encoded = new TextEncoder().encode(TIMESTAMP + body);
+  const signature = await subtle.sign('Ed25519', TEST_PRIVATE_KEY, encoded);
+  const hexSignature = hexStringFromArrayBuffer(signature);
+  return new Request('http://discordo.example', {
+    headers: {
+      'X-Signature-Timestamp': '2025-11-06T21:41:40Z',
+      'X-Signature-Ed25519': hexSignature,
+    },
+    method: 'POST',
+    body,
+  });
+}
+
+async function passMiddleware(req, _res, next) {
+  req.body = JSON.parse(req.body.toString('utf-8')) || {};
+  next();
 }
 
 describe('Server', () => {
@@ -36,14 +90,19 @@ describe('Server', () => {
   });
 
   describe('POST /', () => {
-    let verifyKeyStub;
+    let verifyKeyMiddlewareStub;
+    let env;
 
     beforeEach(() => {
-      verifyKeyStub = sinon.stub(server, 'verifyKey');
+      env = {
+        DISCORD_PUBLIC_KEY: TEST_PUBLIC_KEY_HEX,
+        DISCORD_APPLICATION_ID: '123456789',
+      };
+      verifyKeyMiddlewareStub = sinon.stub(server, 'verifyKeyMiddleware');
     });
 
     afterEach(() => {
-      verifyKeyStub.restore();
+      verifyKeyMiddlewareStub.restore();
     });
 
     it('should reject an unverifiable request', async (t) => {
@@ -51,49 +110,59 @@ describe('Server', () => {
         type: InteractionType.PING,
       });
 
-      verifyKeyStub.resolves(false);
+      verifyKeyMiddlewareStub.restore();
 
-      const response = await server.fetch(request, {});
+      const response = await server.fetch(request, env);
       t.assert.strictEqual(response.status, 401);
       const body = await response.text();
-      t.assert.strictEqual(body, 'Bad request signature.');
+      t.assert.strictEqual(body, '[discord-interactions] Invalid signature');
     });
 
-    it('should reject a request with bad json', async (t) => {
-      const request = new Request(makePostRequest(), { body: '.' });
+    it('should reject a request with a bad signature', async (t) => {
+      const request = new Request(
+        makePostRequest({
+          type: InteractionType.PING,
+        }),
+        {
+          headers: {
+            'X-Signature-Timestamp': '1',
+            'X-Signature-Ed25519': '1',
+          },
+        },
+      );
 
-      verifyKeyStub.resolves(true);
+      verifyKeyMiddlewareStub.restore();
 
-      const response = await server.fetch(request, {});
+      const response = await server.fetch(request, env);
       t.assert.strictEqual(response.status, 401);
       const body = await response.text();
-      t.assert.strictEqual(body, 'Bad request json format.');
+      t.assert.strictEqual(body, '[discord-interactions] Invalid signature');
     });
 
     it('should reject a request with no type', async (t) => {
       const request = new Request(makePostRequest(), { body: 'false' });
 
-      verifyKeyStub.resolves(true);
+      verifyKeyMiddlewareStub.returns(passMiddleware);
 
-      const response = await server.fetch(request, {});
+      const response = await server.fetch(request, env);
       t.assert.strictEqual(response.status, 400);
       const body = await response.json();
       t.assert.strictEqual(body.error, 'Unknown Interaction Type: undefined');
     });
 
     it('should handle a PING interaction', async (t) => {
-      const request = makePostRequest({
+      const request = await makeSignedPostRequest({
         type: InteractionType.PING,
       });
 
-      verifyKeyStub.resolves(true);
+      verifyKeyMiddlewareStub.restore();
 
-      const response = await server.fetch(request, {});
+      const response = await server.fetch(request, env);
       const body = await response.json();
       t.assert.strictEqual(body.type, InteractionResponseType.PONG);
     });
 
-    it('should handle an REACTION_CSV command interaction', async (t) => {
+    it('should handle a REACTION_CSV command interaction', async (t) => {
       const request = makePostRequest({
         type: InteractionType.APPLICATION_COMMAND,
         data: {
@@ -101,7 +170,7 @@ describe('Server', () => {
         },
       });
 
-      verifyKeyStub.resolves(true);
+      verifyKeyMiddlewareStub.returns(passMiddleware);
 
       // // mock the fetch call
       // const result = sinon
@@ -114,7 +183,7 @@ describe('Server', () => {
       //     json: sinon.fake.resolves({ data: { children: [] } }),
       //   });
 
-      const response = await server.fetch(request, {});
+      const response = await server.fetch(request, env);
       const body = await response.json();
       t.assert.strictEqual(
         body.type,
@@ -131,11 +200,7 @@ describe('Server', () => {
         },
       });
 
-      const env = {
-        DISCORD_APPLICATION_ID: '123456789',
-      };
-
-      verifyKeyStub.resolves(true);
+      verifyKeyMiddlewareStub.returns(passMiddleware);
 
       const response = await server.fetch(request, env);
       const body = await response.json();
@@ -158,9 +223,9 @@ describe('Server', () => {
         data: { name },
       });
 
-      verifyKeyStub.resolves(true);
+      verifyKeyMiddlewareStub.returns(passMiddleware);
 
-      const response = await server.fetch(request, {});
+      const response = await server.fetch(request, env);
       const body = await response.json();
       t.assert.strictEqual(response.status, 400);
       t.assert.strictEqual(body.error, `Unknown Command: ${name}`);
@@ -180,9 +245,9 @@ describe('Server', () => {
         },
       });
 
-      verifyKeyStub.resolves(true);
+      verifyKeyMiddlewareStub.returns(passMiddleware);
 
-      const response = await server.fetch(request, {});
+      const response = await server.fetch(request, env);
       const body = await response.json();
       t.assert.strictEqual(response.status, 400);
       t.assert.strictEqual(body.error, `Unknown Interaction Type: ${type}`);
@@ -191,13 +256,12 @@ describe('Server', () => {
 
   describe('All other routes', () => {
     it('should return a "Not Found" response', async (t) => {
-      const request = new Request('http://discordo.example/unknown', {
-        headers: {
-          'X-Signature-Timestamp': '1',
-          'X-Signature-Ed25519': '1',
-        },
-      });
-      const response = await server.fetch(request, {});
+      const env = {
+        DISCORD_PUBLIC_KEY: '8BADF00D',
+        DISCORD_APPLICATION_ID: '123456789',
+      };
+      const request = new Request('http://discordo.example/unknown');
+      const response = await server.fetch(request, env);
       t.assert.strictEqual(response.status, 404);
       const body = await response.text();
       t.assert.ok(body.includes('Not Found'));
