@@ -1,5 +1,4 @@
-import { expect } from 'chai';
-import { describe, it, beforeEach, afterEach } from 'mocha';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import {
   InteractionResponseType,
   InteractionType,
@@ -12,7 +11,7 @@ import { redditUrl } from '../src/reddit.js';
 
 describe('Server', () => {
   describe('GET /', () => {
-    it('should return a greeting message with the Discord application ID', async () => {
+    it('should return a greeting message with the Discord application ID', async (t) => {
       const request = {
         method: 'GET',
         url: new URL('/', 'http://discordo.example'),
@@ -22,7 +21,7 @@ describe('Server', () => {
       const response = await server.fetch(request, env);
       const body = await response.text();
 
-      expect(body).to.equal('👋 123456789');
+      t.assert.strictEqual(body, '👋 123456789');
     });
   });
 
@@ -37,7 +36,7 @@ describe('Server', () => {
       verifyDiscordRequestStub.restore();
     });
 
-    it('should handle a PING interaction', async () => {
+    it('should handle a PING interaction', async (t) => {
       const interaction = {
         type: InteractionType.PING,
       };
@@ -56,10 +55,10 @@ describe('Server', () => {
 
       const response = await server.fetch(request, env);
       const body = await response.json();
-      expect(body.type).to.equal(InteractionResponseType.PONG);
+      t.assert.strictEqual(body.type, InteractionResponseType.PONG);
     });
 
-    it('should handle an AWW command interaction', async () => {
+    it('should handle an AWW command interaction', async (t) => {
       const interaction = {
         type: InteractionType.APPLICATION_COMMAND,
         data: {
@@ -92,13 +91,14 @@ describe('Server', () => {
 
       const response = await server.fetch(request, env);
       const body = await response.json();
-      expect(body.type).to.equal(
+      t.assert.strictEqual(
+        body.type,
         InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       );
-      expect(result.calledOnce);
+      t.assert.ok(result.calledOnce);
     });
 
-    it('should handle an invite command interaction', async () => {
+    it('should handle an invite command interaction', async (t) => {
       const interaction = {
         type: InteractionType.APPLICATION_COMMAND,
         data: {
@@ -122,16 +122,19 @@ describe('Server', () => {
 
       const response = await server.fetch(request, env);
       const body = await response.json();
-      expect(body.type).to.equal(
+      t.assert.strictEqual(
+        body.type,
         InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       );
-      expect(body.data.content).to.include(
-        'https://discord.com/oauth2/authorize?client_id=123456789&scope=applications.commands',
+      t.assert.ok(
+        body.data.content.includes(
+          'https://discord.com/oauth2/authorize?client_id=123456789&scope=applications.commands',
+        ),
       );
-      expect(body.data.flags).to.equal(InteractionResponseFlags.EPHEMERAL);
+      t.assert.strictEqual(body.data.flags, InteractionResponseFlags.EPHEMERAL);
     });
 
-    it('should handle an unknown command interaction', async () => {
+    it('should handle an unknown command interaction', async (t) => {
       const interaction = {
         type: InteractionType.APPLICATION_COMMAND,
         data: {
@@ -151,21 +154,21 @@ describe('Server', () => {
 
       const response = await server.fetch(request, {});
       const body = await response.json();
-      expect(response.status).to.equal(400);
-      expect(body.error).to.equal('Unknown Type');
+      t.assert.strictEqual(response.status, 400);
+      t.assert.strictEqual(body.error, 'Unknown Type');
     });
   });
 
   describe('All other routes', () => {
-    it('should return a "Not Found" response', async () => {
+    it('should return a "Not Found" response', async (t) => {
       const request = {
         method: 'GET',
         url: new URL('/unknown', 'http://discordo.example'),
       };
       const response = await server.fetch(request, {});
-      expect(response.status).to.equal(404);
+      t.assert.strictEqual(response.status, 404);
       const body = await response.text();
-      expect(body).to.equal('Not Found.');
+      t.assert.strictEqual(body, 'Not Found.');
     });
   });
 });
