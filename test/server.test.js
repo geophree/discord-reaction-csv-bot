@@ -4,10 +4,20 @@ import {
   InteractionType,
   InteractionResponseFlags,
 } from 'discord-interactions';
-import { AWW_COMMAND, INVITE_COMMAND } from '../src/commands.js';
+import { REACTION_CSV_COMMAND, INVITE_COMMAND } from '../src/commands.js';
 import sinon from 'sinon';
 import server from '../src/server.js';
-import { redditUrl } from '../src/reddit.js';
+
+function makePostRequest(bodyObj) {
+  return new Request('http://discordo.example', {
+    headers: {
+      'X-Signature-Timestamp': '1',
+      'X-Signature-Ed25519': '1',
+    },
+    method: 'POST',
+    body: JSON.stringify(bodyObj),
+  });
+}
 
 describe('Server', () => {
   describe('GET /', () => {
@@ -26,99 +36,106 @@ describe('Server', () => {
   });
 
   describe('POST /', () => {
-    let verifyDiscordRequestStub;
+    let verifyKeyStub;
 
     beforeEach(() => {
-      verifyDiscordRequestStub = sinon.stub(server, 'verifyDiscordRequest');
+      verifyKeyStub = sinon.stub(server, 'verifyKey');
     });
 
     afterEach(() => {
-      verifyDiscordRequestStub.restore();
+      verifyKeyStub.restore();
+    });
+
+    it('should reject an unverifiable request', async (t) => {
+      const request = makePostRequest({
+        type: InteractionType.PING,
+      });
+
+      verifyKeyStub.resolves(false);
+
+      const response = await server.fetch(request, {});
+      t.assert.strictEqual(response.status, 401);
+      const body = await response.text();
+      t.assert.strictEqual(body, 'Bad request signature.');
+    });
+
+    it('should reject a request with bad json', async (t) => {
+      const request = new Request(makePostRequest(), { body: '.' });
+
+      verifyKeyStub.resolves(true);
+
+      const response = await server.fetch(request, {});
+      t.assert.strictEqual(response.status, 401);
+      const body = await response.text();
+      t.assert.strictEqual(body, 'Bad request json format.');
+    });
+
+    it('should reject a request with no type', async (t) => {
+      const request = new Request(makePostRequest(), { body: 'false' });
+
+      verifyKeyStub.resolves(true);
+
+      const response = await server.fetch(request, {});
+      t.assert.strictEqual(response.status, 400);
+      const body = await response.json();
+      t.assert.strictEqual(body.error, 'Unknown Interaction Type: undefined');
     });
 
     it('should handle a PING interaction', async (t) => {
-      const interaction = {
+      const request = makePostRequest({
         type: InteractionType.PING,
-      };
-
-      const request = {
-        method: 'POST',
-        url: new URL('/', 'http://discordo.example'),
-      };
-
-      const env = {};
-
-      verifyDiscordRequestStub.resolves({
-        isValid: true,
-        interaction: interaction,
       });
 
-      const response = await server.fetch(request, env);
+      verifyKeyStub.resolves(true);
+
+      const response = await server.fetch(request, {});
       const body = await response.json();
       t.assert.strictEqual(body.type, InteractionResponseType.PONG);
     });
 
-    it('should handle an AWW command interaction', async (t) => {
-      const interaction = {
+    it('should handle an REACTION_CSV command interaction', async (t) => {
+      const request = makePostRequest({
         type: InteractionType.APPLICATION_COMMAND,
         data: {
-          name: AWW_COMMAND.name,
+          name: REACTION_CSV_COMMAND.name,
         },
-      };
-
-      const request = {
-        method: 'POST',
-        url: new URL('/', 'http://discordo.example'),
-      };
-
-      const env = {};
-
-      verifyDiscordRequestStub.resolves({
-        isValid: true,
-        interaction: interaction,
       });
 
-      // mock the fetch call to reddit
-      const result = sinon
-        // eslint-disable-next-line no-undef
-        .stub(global, 'fetch')
-        .withArgs(redditUrl)
-        .resolves({
-          status: 200,
-          ok: true,
-          json: sinon.fake.resolves({ data: { children: [] } }),
-        });
+      verifyKeyStub.resolves(true);
 
-      const response = await server.fetch(request, env);
+      // // mock the fetch call
+      // const result = sinon
+      //   // eslint-disable-next-line no-undef
+      //   .stub(global, 'fetch')
+      //   .withArgs('https://cute.com')
+      //   .resolves({
+      //     status: 200,
+      //     ok: true,
+      //     json: sinon.fake.resolves({ data: { children: [] } }),
+      //   });
+
+      const response = await server.fetch(request, {});
       const body = await response.json();
       t.assert.strictEqual(
         body.type,
         InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       );
-      t.assert.ok(result.calledOnce);
+      //t.assert.ok(result.calledOnce);
     });
 
     it('should handle an invite command interaction', async (t) => {
-      const interaction = {
+      const request = makePostRequest({
         type: InteractionType.APPLICATION_COMMAND,
         data: {
           name: INVITE_COMMAND.name,
         },
-      };
-
-      const request = {
-        method: 'POST',
-        url: new URL('/', 'http://discordo.example'),
-      };
+      });
 
       const env = {
         DISCORD_APPLICATION_ID: '123456789',
       };
 
-      verifyDiscordRequestStub.resolves({
-        isValid: true,
-        interaction: interaction,
-      });
+      verifyKeyStub.resolves(true);
 
       const response = await server.fetch(request, env);
       const body = await response.json();
@@ -135,40 +152,55 @@ describe('Server', () => {
     });
 
     it('should handle an unknown command interaction', async (t) => {
-      const interaction = {
+      const name = 'unknown';
+      const request = makePostRequest({
         type: InteractionType.APPLICATION_COMMAND,
-        data: {
-          name: 'unknown',
-        },
-      };
-
-      const request = {
-        method: 'POST',
-        url: new URL('/', 'http://discordo.example'),
-      };
-
-      verifyDiscordRequestStub.resolves({
-        isValid: true,
-        interaction: interaction,
+        data: { name },
       });
+
+      verifyKeyStub.resolves(true);
 
       const response = await server.fetch(request, {});
       const body = await response.json();
       t.assert.strictEqual(response.status, 400);
-      t.assert.strictEqual(body.error, 'Unknown Type');
+      t.assert.strictEqual(body.error, `Unknown Command: ${name}`);
+    });
+
+    it('should handle an unknown interaction type', async (t) => {
+      const type =
+        Math.max(
+          ...Object.values(InteractionType).filter(
+            (x) => typeof x === 'number',
+          ),
+        ) + 1;
+      const request = makePostRequest({
+        type,
+        data: {
+          name: 'unknown',
+        },
+      });
+
+      verifyKeyStub.resolves(true);
+
+      const response = await server.fetch(request, {});
+      const body = await response.json();
+      t.assert.strictEqual(response.status, 400);
+      t.assert.strictEqual(body.error, `Unknown Interaction Type: ${type}`);
     });
   });
 
   describe('All other routes', () => {
     it('should return a "Not Found" response', async (t) => {
-      const request = {
-        method: 'GET',
-        url: new URL('/unknown', 'http://discordo.example'),
-      };
+      const request = new Request('http://discordo.example/unknown', {
+        headers: {
+          'X-Signature-Timestamp': '1',
+          'X-Signature-Ed25519': '1',
+        },
+      });
       const response = await server.fetch(request, {});
       t.assert.strictEqual(response.status, 404);
       const body = await response.text();
-      t.assert.strictEqual(body, 'Not Found.');
+      t.assert.ok(body.includes('Not Found'));
     });
   });
 });

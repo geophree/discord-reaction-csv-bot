@@ -1,4 +1,4 @@
-import { AWW_COMMAND, INVITE_COMMAND } from './commands.js';
+import * as commands from './commands.js';
 import dotenv from 'dotenv';
 import process from 'node:process';
 
@@ -16,6 +16,7 @@ const applicationId = process.env.DISCORD_APPLICATION_ID;
 if (!token) {
   throw new Error('The DISCORD_TOKEN environment variable is required.');
 }
+
 if (!applicationId) {
   throw new Error(
     'The DISCORD_APPLICATION_ID environment variable is required.',
@@ -34,7 +35,7 @@ const response = await fetch(url, {
     Authorization: `Bot ${token}`,
   },
   method: 'PUT',
-  body: JSON.stringify([AWW_COMMAND, INVITE_COMMAND]),
+  body: JSON.stringify(Object.values(commands)),
 });
 
 if (response.ok) {
@@ -43,11 +44,11 @@ if (response.ok) {
   console.log(JSON.stringify(data, null, 2));
 } else {
   console.error('Error registering commands');
-  let errorText = `Error registering commands \n ${response.url}: ${response.status} ${response.statusText}`;
+  let errorText = `Error registering commands\n${response.url}: ${response.status} ${response.statusText}`;
   try {
     const error = await response.text();
     if (error) {
-      errorText = `${errorText} \n\n ${error}`;
+      errorText += `\n\n${error}`;
     }
   } catch (err) {
     console.error('Error reading body from request:', err);

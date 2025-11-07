@@ -3,9 +3,13 @@
  * and registration.
  */
 
-export const AWW_COMMAND = {
-  name: 'awwww',
-  description: 'Drop some cuteness on this channel.',
+// https://discord.com/developers/docs/interactions/application-commands#application-command-object-application-command-types
+const MESSAGE_COMMAND = 3;
+
+export const REACTION_CSV_COMMAND = {
+  name: 'Get reactions as CSV',
+  type: MESSAGE_COMMAND,
+  description: '',
 };
 
 export const INVITE_COMMAND = {
