@@ -9,7 +9,13 @@ import {
   InteractionType,
   verifyKeyMiddleware,
 } from 'discord-interactions';
+
 import { REACTION_CSV_COMMAND, INVITE_COMMAND } from './commands.js';
+import {
+  CsvBuilder,
+  ReactionUserListFetcher,
+  readableEmojiKey,
+} from './util.js';
 
 async function discordMiddleware(req, env) {
   const expressReq = {
@@ -62,11 +68,50 @@ router.post('/', discordMiddleware, async (req, env) => {
     const command = interaction.data.name.toLowerCase();
     switch (command) {
       case REACTION_CSV_COMMAND.name.toLowerCase(): {
-        const cuteUrl = 'https://cute.com';
+        const data = interaction?.data;
+        const message = data?.resolved?.messages?.[data?.target_id];
+
+        if (!message?.reactions?.length) {
+          return {
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: 'no reactions found',
+              flags: InteractionResponseFlags.EPHEMERAL,
+            },
+          };
+        }
+
+        const fetcher = new ReactionUserListFetcher(message, env);
+        const promises = message.reactions.map(async ({ emoji }) => [
+          readableEmojiKey(emoji),
+          await fetcher.fetch(emoji),
+        ]);
+
+        let content;
+        try {
+          const responses = await Promise.all(promises);
+
+          const builder = new CsvBuilder([
+            'emoji',
+            'discordUserId',
+            'discordUserName',
+          ]);
+          for (const [emojiKey, users] of responses) {
+            for (const user of users) {
+              builder.addLine([emojiKey, user.id, user.username]);
+            }
+          }
+          content = builder.build();
+        } catch (e) {
+          console.error(e);
+          content = 'something went wrong';
+        }
+
         return {
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: cuteUrl,
+            content,
+            flags: InteractionResponseFlags.EPHEMERAL,
           },
         };
       }
