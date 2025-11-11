@@ -15,7 +15,8 @@ export class ReactionUserListFetcher {
   constructor(message, env) {
     this.baseUrl = `https://discord.com/api/v10/channels/${message.channel_id}/messages/${message.id}/reactions`;
     this.headers = {
-      // User-Agent too?
+      // User-Agent? Others don't seem to...
+      // "Content-Type": "application/json", // There's no request body.
       Authorization: `Bot ${env.DISCORD_TOKEN}`,
     };
   }
@@ -24,7 +25,9 @@ export class ReactionUserListFetcher {
     const { baseUrl, headers } = this;
     const url = `${baseUrl}/${encodedEmojiKey(emojiObj)}?limit=100`;
     const res = await fetch(url, { headers });
-    return res.json();
+    if (!res.ok)
+      throw new Error(`HTTP ${res.status} error: ` + (await res.text()));
+    return await res.json();
   }
 }
 

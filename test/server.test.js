@@ -20,6 +20,51 @@ async function passMiddleware(req, _res, next) {
   next();
 }
 
+function emojiFromKey(key) {
+  const parts = key.split(':');
+  let id, name, animated;
+  switch (parts.length) {
+    case 1:
+      [name] = parts;
+      break;
+    case 2:
+      [name, id] = parts;
+      break;
+    case 3:
+      [, name, id] = parts;
+      animated = true;
+      break;
+  }
+  return { id, name: decodeURIComponent(name), animated };
+}
+
+function makeMessageWithReactions(reactions = {}) {
+  return {
+    id: '1000',
+    channel_id: '1',
+    reactions: Object.entries(reactions).map(([emojiKey, count]) => ({
+      count,
+      emoji: emojiFromKey(emojiKey),
+    })),
+  };
+}
+
+function makeReactionCsvRequestBody(reactions) {
+  const message = makeMessageWithReactions(reactions);
+  return {
+    type: InteractionType.APPLICATION_COMMAND,
+    data: {
+      name: REACTION_CSV_COMMAND.name,
+      resolved: {
+        messages: {
+          [message.id]: message,
+        },
+      },
+      target_id: message.id,
+    },
+  };
+}
+
 describe('Server', () => {
   describe('GET /', () => {
     it('should return a greeting message with the Discord application ID', async (t) => {
@@ -38,6 +83,7 @@ describe('Server', () => {
 
   describe('POST /', () => {
     let verifyKeyMiddlewareStub;
+    // let ReactionUserListFetcherStub;
     let env;
 
     beforeEach(() => {
@@ -45,10 +91,14 @@ describe('Server', () => {
         DISCORD_APPLICATION_ID: '123456789',
       };
       verifyKeyMiddlewareStub = sinon.stub(server, 'verifyKeyMiddleware');
+      // _ReactionUserListFetcherStub = sinon.stub(
+      //   server,
+      //   'ReactionUserListFetcher',
+      // );
     });
 
     afterEach(() => {
-      verifyKeyMiddlewareStub.restore();
+      sinon.restore();
     });
 
     it('should reject a request with no type', async (t) => {
@@ -56,26 +106,25 @@ describe('Server', () => {
 
       verifyKeyMiddlewareStub.returns(passMiddleware);
 
+      const err = sinon.stub(globalThis.console, 'error');
       const response = await server.fetch(request, env);
+      err.restore();
+
       t.assert.strictEqual(response.status, 400);
       const body = await response.json();
       t.assert.strictEqual(body.error, 'Unknown Interaction Type: undefined');
     });
 
     it('should handle a REACTION_CSV command interaction', async (t) => {
-      const request = makePostRequest({
-        type: InteractionType.APPLICATION_COMMAND,
-        data: {
-          name: REACTION_CSV_COMMAND.name,
-        },
-      });
+      const request = makePostRequest(makeReactionCsvRequestBody({}));
 
       verifyKeyMiddlewareStub.returns(passMiddleware);
+      //ReactionUserListFetcherStub.returns({
 
       // // mock the fetch call
       // const result = sinon
       //   // eslint-disable-next-line no-undef
-      //   .stub(global, 'fetch')
+      //   .stub(globalThis, 'fetch')
       //   .withArgs('https://cute.com')
       //   .resolves({
       //     status: 200,
@@ -147,7 +196,10 @@ describe('Server', () => {
 
       verifyKeyMiddlewareStub.returns(passMiddleware);
 
+      const err = sinon.stub(globalThis.console, 'error');
       const response = await server.fetch(request, env);
+      err.restore();
+
       const body = await response.json();
       t.assert.strictEqual(response.status, 400);
       t.assert.strictEqual(body.error, `Unknown Interaction Type: ${type}`);

@@ -81,8 +81,11 @@ router.post('/', discordMiddleware, async (req, env) => {
           };
         }
 
-        const fetcher = new ReactionUserListFetcher(message, env);
-        const promises = message.reactions.map(async ({ emoji }) => [
+        const fetcher = new server.ReactionUserListFetcher(message, env);
+        const { reactions } = message;
+        reactions.sort((a, b) => b.count - a.count); // higher count first
+        if (reactions.length > 30) reactions.length = 30;
+        const promises = reactions.map(async ({ emoji }) => [
           readableEmojiKey(emoji),
           await fetcher.fetch(emoji),
         ]);
@@ -138,6 +141,7 @@ router.post('/', discordMiddleware, async (req, env) => {
 
 const server = {
   verifyKeyMiddleware,
+  ReactionUserListFetcher,
   fetch: router.fetch,
 };
 
