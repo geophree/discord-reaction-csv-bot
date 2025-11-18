@@ -25,6 +25,7 @@ export class ReactionUserListFetcher {
     const { baseUrl, headers } = this;
     const url = `${baseUrl}/${encodedEmojiKey(emojiObj)}?limit=100`;
     const res = await fetch(url, { headers });
+    if (!res) throw new Error('fetch returned falsy response');
     if (!res.ok)
       throw new Error(`HTTP ${res.status} error: ` + (await res.text()));
     return await res.json();

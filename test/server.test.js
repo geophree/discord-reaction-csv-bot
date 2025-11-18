@@ -7,6 +7,7 @@ import {
 import { REACTION_CSV_COMMAND, INVITE_COMMAND } from '../src/commands.js';
 import sinon from 'sinon';
 import server from '../src/server.js';
+import { encodedEmojiKey } from '../src/util.js';
 
 function makePostRequest(bodyObj) {
   return new Request('http://discordo.example', {
@@ -82,19 +83,22 @@ describe('Server', () => {
   });
 
   describe('POST /', () => {
+    // eslint-disable-next-line no-unused-vars
+    let fetchStub;
     let verifyKeyMiddlewareStub;
-    // let ReactionUserListFetcherStub;
+    let ReactionUserListFetcherStub;
     let env;
 
     beforeEach(() => {
       env = {
         DISCORD_APPLICATION_ID: '123456789',
       };
+      fetchStub = sinon.stub(globalThis, 'fetch');
       verifyKeyMiddlewareStub = sinon.stub(server, 'verifyKeyMiddleware');
-      // _ReactionUserListFetcherStub = sinon.stub(
-      //   server,
-      //   'ReactionUserListFetcher',
-      // );
+      ReactionUserListFetcherStub = sinon.stub(
+        server,
+        'ReactionUserListFetcher',
+      );
     });
 
     afterEach(() => {
@@ -115,30 +119,150 @@ describe('Server', () => {
       t.assert.strictEqual(body.error, 'Unknown Interaction Type: undefined');
     });
 
-    it('should handle a REACTION_CSV command interaction', async (t) => {
-      const request = makePostRequest(makeReactionCsvRequestBody({}));
+    describe('REACTION_CSV', () => {
+      it('should handle a REACTION_CSV command interaction', async (t) => {
+        const request = makePostRequest(makeReactionCsvRequestBody());
 
-      verifyKeyMiddlewareStub.returns(passMiddleware);
-      //ReactionUserListFetcherStub.returns({
+        verifyKeyMiddlewareStub.returns(passMiddleware);
 
-      // // mock the fetch call
-      // const result = sinon
-      //   // eslint-disable-next-line no-undef
-      //   .stub(globalThis, 'fetch')
-      //   .withArgs('https://cute.com')
-      //   .resolves({
-      //     status: 200,
-      //     ok: true,
-      //     json: sinon.fake.resolves({ data: { children: [] } }),
-      //   });
+        const response = await server.fetch(request, env);
+        const body = await response.json();
+        t.assert.strictEqual(
+          body.type,
+          InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        );
+      });
 
-      const response = await server.fetch(request, env);
-      const body = await response.json();
-      t.assert.strictEqual(
-        body.type,
-        InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-      );
-      //t.assert.ok(result.calledOnce);
+      it('should tell the user something went wrong when it did', async (t) => {
+        const request = makePostRequest(makeReactionCsvRequestBody({ e: 10 }));
+
+        verifyKeyMiddlewareStub.returns(passMiddleware);
+        ReactionUserListFetcherStub.returns({
+          fetch: () => Promise.reject('error'),
+        });
+
+        const err = sinon.stub(globalThis.console, 'error');
+        const response = await server.fetch(request, env);
+        err.restore();
+
+        const body = await response.json();
+        t.assert.strictEqual(
+          body.type,
+          InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        );
+
+        const content = body?.data?.content;
+        t.assert.strictEqual(content, 'something went wrong');
+      });
+
+      it('should sort and truncate reactions to 30', async (t) => {
+        const reactions = {};
+        for (let i = 1; i < 35; i++) {
+          reactions['e' + i] = i;
+        }
+        const request = makePostRequest(makeReactionCsvRequestBody(reactions));
+
+        verifyKeyMiddlewareStub.returns(passMiddleware);
+        ReactionUserListFetcherStub.returns({
+          fetch: async () => [{ id: '1000', username: 'myname' }],
+        });
+
+        // // mock the fetch call
+        // const result = sinon
+        //   // eslint-disable-next-line no-undef
+        //   .stub(globalThis, 'fetch')
+        //   .withArgs('https://cute.com')
+        //   .resolves({
+        //     status: 200,
+        //     ok: true,
+        //     json: sinon.fake.resolves({ data: { children: [] } }),
+        //   });
+
+        const response = await server.fetch(request, env);
+        const body = await response.json();
+        t.assert.strictEqual(
+          body.type,
+          InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        );
+
+        const content = body?.data?.content;
+        t.assert.strictEqual(typeof content, 'string');
+        const contentLines = content.split('\n');
+        // 30 + header + empty last line
+        t.assert.strictEqual(contentLines.length, 32);
+        t.assert.ok(contentLines[0].includes('emoji'));
+        t.assert.strictEqual(contentLines[1], 'e34,1000,myname');
+        t.assert.strictEqual(contentLines[15], 'e20,1000,myname');
+        t.assert.strictEqual(
+          contentLines[contentLines.length - 2],
+          'e5,1000,myname',
+        );
+        t.assert.strictEqual(contentLines[contentLines.length - 1], '');
+        //t.assert.ok(result.calledOnce);
+      });
+
+      it('should include all reacted users in csv', async (t) => {
+        const reactions = {
+          'a:foo%20bar:1001': [
+            { id: '1000', username: 'myname' },
+            { id: '2000', username: 'aname' },
+          ],
+          'lol:3000': [
+            { id: '2000', username: 'aname' },
+            { id: '3000', username: 'foibles' },
+            { id: '4000', username: 'grandma' },
+          ],
+          wink: [
+            { id: '1000', username: 'myname' },
+            { id: '5000', username: 'named' },
+            { id: '6000', username: 'baz' },
+            { id: '7000', username: 'bim' },
+          ],
+        };
+        const reactionCounts = Object.fromEntries(
+          Object.entries(reactions).map(([k, v]) => [k, v.length]),
+        );
+        const request = makePostRequest(
+          makeReactionCsvRequestBody(reactionCounts),
+        );
+
+        verifyKeyMiddlewareStub.returns(passMiddleware);
+        ReactionUserListFetcherStub.returns({
+          fetch: async (emojiObject) => reactions[encodedEmojiKey(emojiObject)],
+        });
+
+        // // mock the fetch call
+        // const result = sinon
+        //   // eslint-disable-next-line no-undef
+        //   .stub(globalThis, 'fetch')
+        //   .withArgs('https://cute.com')
+        //   .resolves({
+        //     status: 200,
+        //     ok: true,
+        //     json: sinon.fake.resolves({ data: { children: [] } }),
+        //   });
+
+        const response = await server.fetch(request, env);
+        const body = await response.json();
+        t.assert.strictEqual(
+          body.type,
+          InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        );
+
+        t.assert.strictEqual(
+          body?.data?.content,
+          'emoji,discordUserId,discordUserName\n' +
+            'wink,1000,myname\n' +
+            'wink,5000,named\n' +
+            'wink,6000,baz\n' +
+            'wink,7000,bim\n' +
+            'lol:3000,2000,aname\n' +
+            'lol:3000,3000,foibles\n' +
+            'lol:3000,4000,grandma\n' +
+            'a:foo%20bar:1001,1000,myname\n' +
+            'a:foo%20bar:1001,2000,aname\n',
+        );
+      });
     });
 
     it('should handle an invite command interaction', async (t) => {
