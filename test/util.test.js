@@ -1,12 +1,19 @@
-import { describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
+import sinon from 'sinon';
 
 import {
   encodedEmojiKey,
   readableEmojiKey,
-  //  ReactionUserListFetcher,
+  ReactionUserListFetcher,
   csvQuote,
   CsvBuilder,
 } from '../src/util.js';
+
+function jsonResponse(obj) {
+  return new Response(JSON.stringify(obj), {
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
 
 describe('Util', () => {
   describe('Emoji keys', () => {
@@ -34,6 +41,58 @@ describe('Util', () => {
         readableEmojiKey(e),
         'a:_thurston:890457955345002547',
       );
+    });
+  });
+
+  describe('ReactionUserListFetcher', () => {
+    let fetchStub;
+    let env;
+
+    beforeEach(() => {
+      env = { DISCORD_TOKEN: '123456789' };
+      fetchStub = sinon.stub(globalThis, 'fetch');
+    });
+
+    afterEach(() => {
+      sinon.restore();
+    });
+
+    it('should fetch reactions for an emoji', async (t) => {
+      const message = {
+        message_id: 11,
+        channel_id: 75,
+      };
+      const fetcher = new ReactionUserListFetcher(message, env);
+
+      const expectedUserList = [
+        { id: 27, username: 'hello' },
+        { id: 42, username: 'goodbye' },
+      ];
+      fetchStub.returns(Promise.resolve(jsonResponse(expectedUserList)));
+
+      const userList = await fetcher.fetch({ name: '\u{1F60A}' });
+      t.assert.deepEqual(userList, expectedUserList);
+    });
+    it('should handle fetch errors', async (t) => {
+      const message = {
+        message_id: 11,
+        channel_id: 75,
+      };
+      const fetcher = new ReactionUserListFetcher(message, env);
+
+      fetchStub.returns(Promise.resolve(false));
+
+      await t.assert.rejects(fetcher.fetch({ name: 'q' }), /falsy/);
+
+      fetchStub.returns(
+        Promise.resolve({
+          ok: false,
+          status: 404,
+          text: () => Promise.resolve('message'),
+        }),
+      );
+
+      await t.assert.rejects(fetcher.fetch({ name: 'q' }), /404.*message/);
     });
   });
 
