@@ -1,11 +1,10 @@
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach } from 'node:test';
 import {
   InteractionResponseType,
   InteractionType,
   InteractionResponseFlags,
 } from 'discord-interactions';
 import { REACTION_CSV_COMMAND, INVITE_COMMAND } from '../src/commands.js';
-import sinon from 'sinon';
 import server from '../src/server.js';
 import { encodedEmojiKey } from '../src/util.js';
 
@@ -83,36 +82,32 @@ describe('Server', () => {
   });
 
   describe('POST /', () => {
-    // eslint-disable-next-line no-unused-vars
-    let fetchStub;
-    let verifyKeyMiddlewareStub;
-    let ReactionUserListFetcherStub;
+    let ReactionUserListFetcherMock;
     let env;
 
-    beforeEach(() => {
+    beforeEach((t) => {
       env = {
         DISCORD_APPLICATION_ID: '123456789',
       };
-      fetchStub = sinon.stub(globalThis, 'fetch');
-      verifyKeyMiddlewareStub = sinon.stub(server, 'verifyKeyMiddleware');
-      ReactionUserListFetcherStub = sinon.stub(
+      t.mock.method(globalThis, 'fetch', () => Promise.reject(false));
+      t.mock.method(server, 'verifyKeyMiddleware', () => passMiddleware);
+      ReactionUserListFetcherMock = t.mock.property(
         server,
         'ReactionUserListFetcher',
+        class RULFMock {
+          fetch() {
+            return Promise.reject('error');
+          }
+        },
       );
-    });
-
-    afterEach(() => {
-      sinon.restore();
     });
 
     it('should reject a request with no type', async (t) => {
       const request = new Request(makePostRequest(), { body: 'false' });
 
-      verifyKeyMiddlewareStub.returns(passMiddleware);
-
-      const err = sinon.stub(globalThis.console, 'error');
+      const err = t.mock.method(globalThis.console, 'error', () => {});
       const response = await server.fetch(request, env);
-      err.restore();
+      err.mock.restore();
 
       t.assert.strictEqual(response.status, 400);
       const body = await response.json();
@@ -122,8 +117,6 @@ describe('Server', () => {
     describe('REACTION_CSV', () => {
       it('should handle a REACTION_CSV command interaction', async (t) => {
         const request = makePostRequest(makeReactionCsvRequestBody());
-
-        verifyKeyMiddlewareStub.returns(passMiddleware);
 
         const response = await server.fetch(request, env);
         const body = await response.json();
@@ -136,14 +129,17 @@ describe('Server', () => {
       it('should tell the user something went wrong when it did', async (t) => {
         const request = makePostRequest(makeReactionCsvRequestBody({ e: 10 }));
 
-        verifyKeyMiddlewareStub.returns(passMiddleware);
-        ReactionUserListFetcherStub.returns({
-          fetch: () => Promise.reject('error'),
-        });
+        ReactionUserListFetcherMock.mock.mockImplementation(
+          class RULFMock {
+            fetch() {
+              return Promise.reject('error');
+            }
+          },
+        );
 
-        const err = sinon.stub(globalThis.console, 'error');
+        const err = t.mock.method(globalThis.console, 'error', () => {});
         const response = await server.fetch(request, env);
-        err.restore();
+        err.mock.restore();
 
         const body = await response.json();
         t.assert.strictEqual(
@@ -162,21 +158,13 @@ describe('Server', () => {
         }
         const request = makePostRequest(makeReactionCsvRequestBody(reactions));
 
-        verifyKeyMiddlewareStub.returns(passMiddleware);
-        ReactionUserListFetcherStub.returns({
-          fetch: async () => [{ id: '1000', username: 'myname' }],
-        });
-
-        // // mock the fetch call
-        // const result = sinon
-        //   // eslint-disable-next-line no-undef
-        //   .stub(globalThis, 'fetch')
-        //   .withArgs('https://cute.com')
-        //   .resolves({
-        //     status: 200,
-        //     ok: true,
-        //     json: sinon.fake.resolves({ data: { children: [] } }),
-        //   });
+        ReactionUserListFetcherMock.mock.mockImplementation(
+          class RULFMock {
+            async fetch() {
+              return [{ id: '1000', username: 'myname' }];
+            }
+          },
+        );
 
         const response = await server.fetch(request, env);
         const body = await response.json();
@@ -226,21 +214,13 @@ describe('Server', () => {
           makeReactionCsvRequestBody(reactionCounts),
         );
 
-        verifyKeyMiddlewareStub.returns(passMiddleware);
-        ReactionUserListFetcherStub.returns({
-          fetch: async (emojiObject) => reactions[encodedEmojiKey(emojiObject)],
-        });
-
-        // // mock the fetch call
-        // const result = sinon
-        //   // eslint-disable-next-line no-undef
-        //   .stub(globalThis, 'fetch')
-        //   .withArgs('https://cute.com')
-        //   .resolves({
-        //     status: 200,
-        //     ok: true,
-        //     json: sinon.fake.resolves({ data: { children: [] } }),
-        //   });
+        ReactionUserListFetcherMock.mock.mockImplementation(
+          class RULFMock {
+            async fetch(emojiObject) {
+              return reactions[encodedEmojiKey(emojiObject)];
+            }
+          },
+        );
 
         const response = await server.fetch(request, env);
         const body = await response.json();
@@ -273,8 +253,6 @@ describe('Server', () => {
         },
       });
 
-      verifyKeyMiddlewareStub.returns(passMiddleware);
-
       const response = await server.fetch(request, env);
       const body = await response.json();
       t.assert.strictEqual(
@@ -296,8 +274,6 @@ describe('Server', () => {
         data: { name },
       });
 
-      verifyKeyMiddlewareStub.returns(passMiddleware);
-
       const response = await server.fetch(request, env);
       const body = await response.json();
       t.assert.strictEqual(response.status, 400);
@@ -318,11 +294,9 @@ describe('Server', () => {
         },
       });
 
-      verifyKeyMiddlewareStub.returns(passMiddleware);
-
-      const err = sinon.stub(globalThis.console, 'error');
+      const err = t.mock.method(globalThis.console, 'error', () => {});
       const response = await server.fetch(request, env);
-      err.restore();
+      err.mock.restore();
 
       const body = await response.json();
       t.assert.strictEqual(response.status, 400);

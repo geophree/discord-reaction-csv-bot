@@ -1,5 +1,4 @@
-import { afterEach, beforeEach, describe, it } from 'node:test';
-import sinon from 'sinon';
+import { beforeEach, describe, it } from 'node:test';
 
 import {
   encodedEmojiKey,
@@ -45,16 +44,11 @@ describe('Util', () => {
   });
 
   describe('ReactionUserListFetcher', () => {
-    let fetchStub;
     let env;
 
-    beforeEach(() => {
+    beforeEach((t) => {
       env = { DISCORD_TOKEN: '123456789' };
-      fetchStub = sinon.stub(globalThis, 'fetch');
-    });
-
-    afterEach(() => {
-      sinon.restore();
+      t.mock.method(globalThis, 'fetch', () => {});
     });
 
     it('should fetch reactions for an emoji', async (t) => {
@@ -68,11 +62,12 @@ describe('Util', () => {
         { id: 27, username: 'hello' },
         { id: 42, username: 'goodbye' },
       ];
-      fetchStub.returns(Promise.resolve(jsonResponse(expectedUserList)));
+      fetch.mock.mockImplementation(async () => jsonResponse(expectedUserList));
 
       const userList = await fetcher.fetch({ name: '\u{1F60A}' });
       t.assert.deepEqual(userList, expectedUserList);
     });
+
     it('should handle fetch errors', async (t) => {
       const message = {
         message_id: 11,
@@ -80,19 +75,17 @@ describe('Util', () => {
       };
       const fetcher = new ReactionUserListFetcher(message, env);
 
-      fetchStub.returns(Promise.resolve(false));
+      fetch.mock.mockImplementation(async () => false);
 
       await t.assert.rejects(fetcher.fetch({ name: 'q' }), /falsy/);
 
-      fetchStub.returns(
-        Promise.resolve({
-          ok: false,
-          status: 404,
-          text: () => Promise.resolve('message'),
-        }),
-      );
+      fetch.mock.mockImplementation(async () => ({
+        ok: false,
+        status: 404,
+        text: () => Promise.resolve('sekrit'),
+      }));
 
-      await t.assert.rejects(fetcher.fetch({ name: 'q' }), /404.*message/);
+      await t.assert.rejects(fetcher.fetch({ name: 'q' }), /404.*sekrit/);
     });
   });
 

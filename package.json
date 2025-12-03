@@ -14,7 +14,13 @@
     "register": "node src/register.js",
     "publish": "wrangler deploy"
   },
-  "keywords": ["discord", "reactions", "csv", "bot", "cloudflare"],
+  "keywords": [
+    "discord",
+    "reactions",
+    "csv",
+    "bot",
+    "cloudflare"
+  ],
   "author": "Jeffrey Hanke <geophree@gmail.com>",
   "license": "MIT",
   "dependencies": {
@@ -31,7 +37,6 @@
     "globals": "^16.0.0",
     "ngrok": "^5.0.0-beta.2",
     "prettier": "^3.2.5",
-    "sinon": "^21.0.0",
     "wrangler": "^4.13.2"
   }
 }
