@@ -7,6 +7,8 @@ import {
   InteractionResponseFlags,
   InteractionResponseType,
   InteractionType,
+  TextStyleTypes,
+  MessageComponentTypes,
   verifyKey,
 } from 'discord-interactions';
 
@@ -108,11 +110,32 @@ router.post('/', discordMiddleware, async (req, env) => {
           content = 'something went wrong';
         }
 
+        // I'd prefer the following, but can't copy it in browser discord
+        // the normal emojis don't get copied:
+        //
+        // {
+        //   type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        //   data: {
+        //     content,
+        //     flags: InteractionResponseFlags.EPHEMERAL,
+        //   },
+        // }
+
         return {
-          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          type: InteractionResponseType.MODAL,
           data: {
-            content,
-            flags: InteractionResponseFlags.EPHEMERAL,
+            custom_id: "reaction_csv",
+            title: "Reaction list in CSV format",
+            components: [{
+              type: MessageComponentTypes.LABEL,
+              label: 'CSV',
+              component: {
+                type: MessageComponentTypes.INPUT_TEXT,
+                custom_id: 'csv text',
+                style: TextStyleTypes.PARAGRAPH,
+                value: content,
+              },
+            }],
           },
         };
       }
