@@ -2,7 +2,7 @@
  * The core server that runs on a Cloudflare worker.
  */
 
-import { AutoRouter, json } from 'itty-router';
+import { AutoRouter, error as ittyError, json } from 'itty-router';
 import {
   InteractionResponseFlags,
   InteractionResponseType,
@@ -46,7 +46,12 @@ async function discordMiddleware(req, env) {
   req.interaction = expressReq.body;
 }
 
-const router = AutoRouter();
+const router = AutoRouter({
+  catch: (e, req, ...args) => {
+    console.error(e);
+    return ittyError(e, req, ...args);
+  },
+});
 
 /**
  * A simple :wave: hello page to verify the worker is working.

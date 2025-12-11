@@ -2,6 +2,21 @@ name = "msg-reaction-csv-bot"
 main = "./src/server.js"
 compatibility_date="2023-05-18"
 
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1
+
 # [secrets]
 # DISCORD_TOKEN
 # DISCORD_PUBLIC_KEY
