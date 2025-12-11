@@ -107,7 +107,13 @@ router.post('/', discordMiddleware, async (req, env) => {
           content = builder.build();
         } catch (e) {
           console.error(e);
-          content = 'something went wrong';
+          return {
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: 'something went wrong',
+              flags: InteractionResponseFlags.EPHEMERAL,
+            },
+          };
         }
 
         // I'd prefer the following, but can't copy it in browser discord
@@ -124,18 +130,20 @@ router.post('/', discordMiddleware, async (req, env) => {
         return {
           type: InteractionResponseType.MODAL,
           data: {
-            custom_id: "reaction_csv",
-            title: "Reaction list in CSV format",
-            components: [{
-              type: MessageComponentTypes.LABEL,
-              label: 'CSV',
-              component: {
-                type: MessageComponentTypes.INPUT_TEXT,
-                custom_id: 'csv text',
-                style: TextStyleTypes.PARAGRAPH,
-                value: content,
+            custom_id: 'reaction_csv',
+            title: 'Reaction list in CSV format',
+            components: [
+              {
+                type: MessageComponentTypes.LABEL,
+                label: 'CSV',
+                component: {
+                  type: MessageComponentTypes.INPUT_TEXT,
+                  custom_id: 'csv text',
+                  style: TextStyleTypes.PARAGRAPH,
+                  value: content,
+                },
               },
-            }],
+            ],
           },
         };
       }

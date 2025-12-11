@@ -185,12 +185,9 @@ describe('Server', () => {
 
         const response = await server.fetch(request, env);
         const body = await response.json();
-        t.assert.strictEqual(
-          body.type,
-          InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        );
+        t.assert.strictEqual(body.type, InteractionResponseType.MODAL);
 
-        const content = body?.data?.content;
+        const content = body?.data?.components?.[0]?.component?.value;
         t.assert.strictEqual(typeof content, 'string');
         const contentLines = content.split('\n');
         // 30 + header + empty last line
@@ -241,13 +238,10 @@ describe('Server', () => {
 
         const response = await server.fetch(request, env);
         const body = await response.json();
-        t.assert.strictEqual(
-          body.type,
-          InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        );
+        t.assert.strictEqual(body.type, InteractionResponseType.MODAL);
 
         t.assert.strictEqual(
-          body?.data?.content,
+          body?.data?.components?.[0]?.component?.value,
           'emoji,discordUserId,discordUserName\n' +
             'wink,1000,myname\n' +
             'wink,5000,named\n' +
