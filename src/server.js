@@ -18,8 +18,16 @@ import {
 } from './util.js';
 
 async function discordMiddleware(req, env) {
+  const body = await req.bytes();
+  body.toString = function (encoding) {
+    if (encoding != 'utf-8') {
+      return Uint8Array.prototype.toString.apply(this);
+    }
+    return (new TextDecoder('utf-8')).decode(this);
+  }
+
   const expressReq = {
-    body: await req.text(),
+    body,
     header: (name) => req.headers.get(name),
   };
 
@@ -32,11 +40,20 @@ async function discordMiddleware(req, env) {
   let isValid = false;
   const next = () => (isValid = true);
 
-  await server.verifyKeyMiddleware(env.DISCORD_PUBLIC_KEY)(
-    expressReq,
-    expressRes,
-    next,
-  );
+  const oldBuffer = globalThis.Buffer;
+  try {
+    globalThis.Buffer = {
+      isBuffer: (o) => o === body,
+    };
+
+    await server.verifyKeyMiddleware(env.DISCORD_PUBLIC_KEY)(
+      expressReq,
+      expressRes,
+      next,
+    );
+  } finally {
+    globalThis.Buffer = oldBuffer;
+  }
 
   if (!isValid) {
     res.status = expressRes.statusCode;
@@ -68,7 +85,7 @@ router.get('/', (req, env) => {
 router.post('/', discordMiddleware, async (req, env) => {
   const interaction = req.interaction;
 
-  if (interaction.type === InteractionType.APPLICATION_COMMAND) {
+  if (interaction?.type === InteractionType.APPLICATION_COMMAND) {
     // Most user commands will come as `APPLICATION_COMMAND`.
     const command = interaction.data.name.toLowerCase();
     switch (command) {
@@ -140,7 +157,7 @@ router.post('/', discordMiddleware, async (req, env) => {
     }
   }
 
-  const error = `Unknown Interaction Type: ${interaction.type}`;
+  const error = `Unknown Interaction Type: ${interaction?.type}`;
   console.error(error);
   return json({ error }, { status: 400 });
 });
