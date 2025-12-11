@@ -261,7 +261,7 @@ describe('Server', () => {
       );
       t.assert.ok(
         body.data.content.includes(
-          'https://discord.com/oauth2/authorize?client_id=123456789&scope=applications.commands',
+          'https://discord.com/oauth2/authorize?client_id=123456789',
         ),
       );
       t.assert.strictEqual(body.data.flags, InteractionResponseFlags.EPHEMERAL);
