@@ -79,7 +79,7 @@ describe('Integration', () => {
       const response = await server.fetch(request, env);
       t.assert.strictEqual(response.status, 401);
       const body = await response.text();
-      t.assert.strictEqual(body, '[discord-interactions] Invalid signature');
+      t.assert.strictEqual(body, '[discordMiddleware] Invalid signature');
     });
 
     it('should reject a request with a bad signature', async (t) => {
@@ -98,7 +98,7 @@ describe('Integration', () => {
       const response = await server.fetch(request, env);
       t.assert.strictEqual(response.status, 401);
       const body = await response.text();
-      t.assert.strictEqual(body, '[discord-interactions] Invalid signature');
+      t.assert.strictEqual(body, '[discordMiddleware] Invalid signature');
     });
 
     it('should handle a PING interaction', async (t) => {

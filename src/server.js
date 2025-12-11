@@ -2,12 +2,12 @@
  * The core server that runs on a Cloudflare worker.
  */
 
-import { AutoRouter, error as ittyError, json } from 'itty-router';
+import { AutoRouter, error as ittyError, json, text } from 'itty-router';
 import {
   InteractionResponseFlags,
   InteractionResponseType,
   InteractionType,
-  verifyKeyMiddleware,
+  verifyKey,
 } from 'discord-interactions';
 
 import { REACTION_CSV_COMMAND, INVITE_COMMAND } from './commands.js';
@@ -17,50 +17,26 @@ import {
   readableEmojiKey,
 } from './util.js';
 
+// adapted/simplified from discord-interactions verifyKeyMiddleware
 async function discordMiddleware(req, env) {
-  const body = await req.bytes();
-  body.toString = function (encoding) {
-    if (encoding != 'utf-8') {
-      return Uint8Array.prototype.toString.apply(this);
-    }
-    return (new TextDecoder('utf-8')).decode(this);
+  const clientPublicKey = env.DISCORD_PUBLIC_KEY;
+  const rawBody = await req.bytes();
+
+  const timestamp = req.headers.get('X-Signature-Timestamp') || '';
+  const signature = req.headers.get('X-Signature-Ed25519') || '';
+
+  if (
+    !(await server.verifyKey(rawBody, signature, timestamp, clientPublicKey))
+  ) {
+    return text('[discordMiddleware] Invalid signature', { status: 401 });
   }
 
-  const expressReq = {
-    body,
-    header: (name) => req.headers.get(name),
-  };
-
-  const res = { headers: {} };
-  const expressRes = {
-    setHeader: (key, val) => (res.headers[key] = val),
-    end: (val) => (res.body = val),
-  };
-
-  let isValid = false;
-  const next = () => (isValid = true);
-
-  const oldBuffer = globalThis.Buffer;
-  try {
-    globalThis.Buffer = {
-      isBuffer: (o) => o === body,
-    };
-
-    await server.verifyKeyMiddleware(env.DISCORD_PUBLIC_KEY)(
-      expressReq,
-      expressRes,
-      next,
-    );
-  } finally {
-    globalThis.Buffer = oldBuffer;
+  const body = JSON.parse(new TextDecoder('utf-8').decode(rawBody)) || {};
+  if (body.type === InteractionType.PING) {
+    return { type: InteractionResponseType.PONG };
   }
 
-  if (!isValid) {
-    res.status = expressRes.statusCode;
-    return new Response(res.body, res);
-  }
-
-  req.interaction = expressReq.body;
+  req.interaction = body;
 }
 
 const router = AutoRouter({
@@ -157,13 +133,15 @@ router.post('/', discordMiddleware, async (req, env) => {
     }
   }
 
+  if (globalThis.testExplode) throw new Error(globalThis.testExplode);
+
   const error = `Unknown Interaction Type: ${interaction?.type}`;
   console.error(error);
   return json({ error }, { status: 400 });
 });
 
 const server = {
-  verifyKeyMiddleware,
+  verifyKey,
   ReactionUserListFetcher,
   fetch: router.fetch,
 };

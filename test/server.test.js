@@ -15,11 +15,6 @@ function makePostRequest(bodyObj) {
   });
 }
 
-async function passMiddleware(req, _res, next) {
-  req.body = JSON.parse(req.body.toString('utf-8')) || {};
-  next();
-}
-
 function emojiFromKey(key) {
   const parts = key.split(':');
   let id, name, animated;
@@ -90,7 +85,7 @@ describe('Server', () => {
         DISCORD_APPLICATION_ID: '123456789',
       };
       t.mock.method(globalThis, 'fetch', () => Promise.reject(false));
-      t.mock.method(server, 'verifyKeyMiddleware', () => passMiddleware);
+      t.mock.method(server, 'verifyKey', () => true);
       ReactionUserListFetcherMock = t.mock.property(
         server,
         'ReactionUserListFetcher',
@@ -112,6 +107,28 @@ describe('Server', () => {
       t.assert.strictEqual(response.status, 400);
       const body = await response.json();
       t.assert.strictEqual(body.error, 'Unknown Interaction Type: undefined');
+    });
+
+    it('should log a thrown error', async (t) => {
+      const request = new Request(makePostRequest(), { body: 'false' });
+      const err = t.mock.method(globalThis.console, 'error', () => {});
+      let response;
+      try {
+        globalThis.testExplode = 'Thrown error';
+
+        response = await server.fetch(request, env);
+        t.assert.strictEqual(
+          err.mock.calls[0].arguments[0].message,
+          'Thrown error',
+        );
+      } finally {
+        delete globalThis.testExplode;
+        err.mock.restore();
+      }
+
+      t.assert.strictEqual(response.status, 500);
+      const body = await response.json();
+      t.assert.strictEqual(body.error, 'Thrown error');
     });
 
     describe('REACTION_CSV', () => {
