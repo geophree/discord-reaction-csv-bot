@@ -1,4 +1,4 @@
-# Cloudflare worker example app
+# MsgReactionCsvBot Cloudflare worker
 
 MsgReactionCsvBot adds an item to your Discord server's messages' context menu to copy its reactions as CSV data. It's hosted on Cloudflare workers. Cloudflare Workers are a convenient way to host Discord bots due to the free tier, simple development model, and automatically managed environment (no VMs!).
 
@@ -6,7 +6,7 @@ MsgReactionCsvBot adds an item to your Discord server's messages' context menu t
 
 - [Discord Interactions API](https://discord.com/developers/docs/interactions/receiving-and-responding)
 - [Cloudflare Workers](https://workers.cloudflare.com/) for hosting
-- [Reddit API](https://www.reddit.com/dev/api/) to send messages back to the user
+- [Discord reactions API](https://discord.com/developers/docs/resources/message#get-reactions) to query for message reactions
 
 ---
 
@@ -18,11 +18,10 @@ Below is a basic overview of the project structure:
 ├── .github/workflows/ci.yaml -> Github Action configuration
 ├── src
 │   ├── commands.js           -> JSON payloads for commands
-│   ├── reddit.js             -> Interactions with the Reddit API
 │   ├── register.js           -> Sets up commands with the Discord API
 │   ├── server.js             -> Discord app logic and routing
-├── test
-|   ├── test.js               -> Tests for app
+│   ├── util.js               -> emoji, CSV, reaction fetching
+├── test/**                   -> app tests
 ├── wrangler.toml             -> Configuration for Cloudflare workers
 ├── package.json
 ├── README.md
@@ -36,7 +35,7 @@ Below is a basic overview of the project structure:
 
 Before starting, you'll need a [Discord app](https://discord.com/developers/applications) with the following permissions:
 
-- `bot` with the `Send Messages` and `Use Slash Command` permissions
+- `bot` with the `View Channels` and `Read Message History` permissions
 - `applications.commands` scope
 
 > ⚙️ Permissions can be configured by clicking on the `OAuth2` tab and using the `URL Generator`. After a URL is generated, you can install the app by pasting that URL into your browser and following the installation flow.
