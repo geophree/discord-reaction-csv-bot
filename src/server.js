@@ -120,7 +120,8 @@ router.post('/', discordMiddleware, async (req, env) => {
       }
       case INVITE_COMMAND.name.toLowerCase(): {
         const applicationId = env.DISCORD_APPLICATION_ID;
-        const INVITE_URL = `https://discord.com/oauth2/authorize?client_id=${applicationId}&scope=applications.commands`;
+        // Permissions for "View Channels" and "Read Message History"
+        const INVITE_URL = `https://discord.com/oauth2/authorize?client_id=${applicationId}&permissions=66560&integration_type=0&scope=bot+applications.commands`;
         return {
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
