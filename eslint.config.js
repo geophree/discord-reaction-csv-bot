@@ -4,6 +4,9 @@ import globals from 'globals';
 
 export default [
   {
+    ignores: ['.wrangler/**'],
+  },
+  {
     languageOptions: {
       globals: {
         ...globals.browser,
