@@ -119,7 +119,7 @@ router.post('/', discordMiddleware, async (req, env) => {
         // I'd prefer the following, but can't copy it in browser discord
         // the normal emojis don't get copied:
         //
-        // {
+        // return {
         //   type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         //   data: {
         //     content,
@@ -127,10 +127,14 @@ router.post('/', discordMiddleware, async (req, env) => {
         //   },
         // }
 
+        const time_str = new Date().toISOString();
+        const modal_id = time_str + '_modal';
+        const input_id = time_str + '_input';
+
         return {
           type: InteractionResponseType.MODAL,
           data: {
-            custom_id: 'reaction_csv',
+            custom_id: modal_id,
             title: 'Reaction list in CSV format',
             components: [
               {
@@ -138,7 +142,7 @@ router.post('/', discordMiddleware, async (req, env) => {
                 label: 'CSV',
                 component: {
                   type: MessageComponentTypes.INPUT_TEXT,
-                  custom_id: 'csv text',
+                  custom_id: input_id,
                   style: TextStyleTypes.PARAGRAPH,
                   value: content,
                 },
